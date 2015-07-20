@@ -23,3 +23,7 @@ https://www.rstudio.com/products/RStudio/#Desktop
 ```
 
 and then open ```vowpal_wabbit.Rmd```
+
+## Slides
+
+https://ondrejivanic.github.io/VowpalWabbitIntro/vowpal_wabbit.html
