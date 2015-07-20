@@ -1,0 +1,10 @@
+.RData
+.Rhistory
+*.txt
+*.bin
+*.cache
+*.tar.gz
+rcv1/
+vowpal_wabbit/
+vowpal_wabbit.html
+rcv1-20k.vw.gz.*

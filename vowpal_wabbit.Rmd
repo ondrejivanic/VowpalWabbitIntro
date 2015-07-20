@@ -1,0 +1,424 @@
+---
+title: "Vowpal Wabbit"
+author: "Ondrej Ivanic (ondrej.ivanic@gmail.com)"
+date: "July 21st, 2015"
+output: ioslides_presentation
+subtitle: A gentle introduction
+---
+
+## What is Vowpal Wabbit
+
+Vowpal Wabbit (VW) is fast learning system developed at **Yahoo! Research** and **Microsoft Research** (now).
+
+The core algorithm is sparse gradient descent on a loss function (several available)
+
+Used in **Azure Machine Learning**
+
+Wiki: https://github.com/JohnLangford/vowpal_wabbit/wiki
+<div class="notes">
+Vowpal Wabbit is a learning system -- it implements multiple learning algorithms. The first public version was released in 2007. VW is also a vehicle for advanced research. For example, the most recent addition is online version of boost-by-majority learning algorithm which was published in February 2015. The paper has been awarded "Best Paper Award" at this year ICML
+</div>
+
+## Installation
+
+* **Linux**
+    - install Vowpal Wabbit package (Ubuntu: `apt-get install vowpal-wabbit`)
+    - or install Boost library and then build VW from the source 
+* **Mac**
+    - install Homebrew (http://brew.sh/)
+    - run `brew install vowpal-wabbit`
+* **Windows**
+    - it's getting easier; you need MS Visual Studio
+    - or install Cygwin and build everything from the source (boost and vw)
+
+<div class="notes">
+As John Langford moved to Microsoft is getting easier to install VW on this platform. On Mac I suggest to use `brew`. On Linux distributions have a look if package is available.
+</div>
+
+## Hello world {.smaller .build}
+
+```{r vw1, engine='bash', comment=''}
+vw test.vw 
+```
+
+<div class="notes">
+Can't be easier... The default model is regression with squared loss. 
+</div>
+
+## Hello world - input file {.build}
+
+```{r vw1-data, engine='bash', comment=''}
+cat test.vw
+```
+
+```{r vw1-min, engine='bash', comment=''}
+cat minimal.vw
+```
+
+<div class="notes">
+Input format is simple. Starting with label or outcome. Then categorical feature `g`. followed by continuous feature `age` and the last continuous feature `hour`. The text between contains features -- each word is a feature. `cust`, `text` and `f` is called namespace.
+
+Which is great because vw can eat almost anything. It can learn something from raw data with minimal pre-processing -- great for creating baseline models.
+</div>
+## Input format { .smaller }
+
+Each line (example) has following format:
+```{r, eval=FALSE}
+[Label] [Importance] [Tag]|Namespace Features |Namespace Features ...
+```
+
+- Label: real number that we are trying to predict
+- Importance: weight of this example
+- Tag: Example identifier. Reported back during scoring
+- Namespace: grouping and scaling of features (`|NamespaceName[:Scale]`)
+- Features: name & value pairs (`Name[:Value]` or `NumericID[:Value]`)
+
+Notes:
+
+- Default value for `Scale` or `Value` is 1
+- Omitting features means that value is 0
+- Spacing is important!
+
+<div class="notes">
+Let's dig into input format little bit more. Input format is sparse. Different algorithms require different label format.
+</div>
+
+## First model {.smaller}
+
+```{r, model1.1, engine="bash", comment=''}
+vw vowpal_wabbit/test/train-sets/0002.dat -f model1.bin --invert_hash model1.txt
+```
+
+## First model - human readable output {.smaller}
+
+```{r, model1.2, engine="bash", comment=''}
+cat model1.txt
+```
+
+## Default commandline options
+
+- squared loss function (`--loss_function`)
+- Stochastic gradient descent (`--sgd`) update options:
+    - adaptive (`--adaptive`): common features stabilize quickly
+    - scale-free (`--normalized`): a.k.a `x' <- (x-μ)/σ`
+    - importance invariant update (`--invariant`): dealing with the importance weights
+
+<div class="notes">
+Another benefit is that you don't have to scale or input missing values. On the other hand there might be a value to do imputation before learning.
+</div>
+
+## Online learning
+
+- VW is online learner not batch learner
+- one example at the time
+- easily scale to billions of examples / features
+- sensitive to input order
+- multiple passes to help model converge (danger of over-fitting)
+
+<div class="notes">
+When you compare VW result with batch learner (glm in R) you will get a different result. It takes a while to converge. This makes VW weak on tiny data sets. On the other hand VW can adapt over the time -- it can learn from non-stationary data. In general, online learner are sensitive to example order. Hence input should not be ordered. The best is if they appear as they are collected.
+</div>
+
+## Online learning - convergence
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+library(ggplot2)
+library(magrittr)
+library(dplyr)
+library(reshape2)
+
+#pass <- data.frame(x = (c(1, 10, 20, 50, 100) * 781265) %>% log(2))
+
+read.csv("rcv1results.csv") %>%
+  mutate(pass = (2 ^ example / 781265) %>% ifelse(. > 100, 100, .)) %>%
+  select(-example) %>%
+  melt(id.vars = "pass") %>%
+  filter(variable %in% c("train")) %>%
+  ggplot +
+  theme_bw() +
+  geom_line(aes(x = pass, y = value, colour = variable)) +
+  geom_point(aes(x = pass, y = value, colour = variable)) +
+  geom_hline(yintercept = 0.1666277288, linetype = "dotted") +
+  scale_color_manual(values = c(test = "#1B9E77", train = "#D95F02", progressive = "#7570B3")) +
+  scale_x_log10(breaks = c(1,2,5,10,20,50,100)) +
+  xlab("pass") +
+  ylab("Absolute loss [sqrt(loss)]") +
+  coord_cartesian(xlim = c(0.1, 100), ylim = c(0.15, 0.25)) +
+  #coord_cartesian(xlim = c(10, 27), ylim = c(0, 0.2)) +
+  theme(legend.position="bottom") +
+  theme(legend.title=element_blank())
+```
+
+<div class="notes">
+The chart show loss vs number of passes through input data set. As you can see, convergence is slow. It takes another ... passes to reach 0
+</div>
+
+## Online learning - convergence
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+library(ggplot2)
+library(magrittr)
+library(dplyr)
+library(reshape2)
+
+#pass <- data.frame(x = (c(1, 10, 20, 50, 100) * 781265) %>% log(2))
+
+read.csv("rcv1results.csv") %>%
+  mutate(pass = (2 ^ example / 781265) %>% ifelse(. > 100, 100, .)) %>%
+  select(-example) %>%
+  melt(id.vars = "pass") %>%
+  mutate(variable = factor(variable)) %>%
+  filter(variable %in% c("train", "test")) %>%
+  ggplot +
+  theme_bw() +
+  geom_line(aes(x = pass, y = value, colour = variable)) +
+  geom_point(aes(x = pass, y = value, colour = variable)) +
+  geom_hline(yintercept = 0.1666277288, linetype = "dotted") + 
+  scale_color_manual(values = c(test = "#1B9E77", train = "#D95F02", progressive = "#7570B3")) +
+  scale_x_log10(breaks = c(1,2,5,10,20,50,100)) +
+  xlab("pass") +
+  ylab("Absolute loss [sqrt(loss)]") +
+  coord_cartesian(xlim = c(0.1, 100), ylim = c(0.15, 0.25)) +
+  #coord_cartesian(xlim = c(10, 27), ylim = c(0, 0.2)) +
+  theme(legend.position="bottom") +
+  theme(legend.title=element_blank())
+```
+<div class="notes">
+Having test set can help us to decide when to stop and avoid over-fitting. In our case good model needs 1 pass. But VW can do this for you!
+</div>
+## Progressive validation
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+library(ggplot2)
+library(magrittr)
+library(dplyr)
+library(reshape2)
+
+#pass <- data.frame(x = (c(1, 10, 20, 50, 100) * 781265) %>% log(2))
+
+read.csv("rcv1results.csv") %>%
+  mutate(pass = (2 ^ example / 781265) %>% ifelse(. > 100, 100, .)) %>%
+  select(-example) %>%
+  melt(id.vars = "pass") %>%
+  mutate(variable = factor(variable)) %>%
+  ggplot +
+  theme_bw() +
+  geom_line(aes(x = pass, y = value, colour = variable)) +
+  geom_point(aes(x = pass, y = value, colour = variable)) +
+  geom_hline(yintercept = 0.1666277288, linetype = "dotted") + 
+  scale_color_manual(values = c(test = "#1B9E77", train = "#D95F02", progressive = "#7570B3")) +
+  scale_x_log10(breaks = c(1,2,5,10,20,50,100)) +
+  xlab("pass") +
+  ylab("Absolute loss [sqrt(loss)]") +
+  coord_cartesian(xlim = c(0.1, 100), ylim = c(0.15, 0.25)) +
+  #coord_cartesian(xlim = c(10, 27), ylim = c(0, 0.2)) +
+  theme(legend.position="bottom") +
+  theme(legend.title=element_blank())
+```
+
+<div class="notes">
+It's called progressive validation and it is used by default. You can ended up with slightly worse model but you can tweak it.
+</div>
+
+## Progressive validation
+- enabled by default (`--holdout_off` to turn it off)
+- set number of passes high enough (`--passes`)
+- `--early_terminate` number of passes tolerated when holdout loss doesn't decrease
+- cache must be used (`-c` or `--cache_file`, and `-k`)
+
+<div class="notes">
+The holdout is enabled when more than one pass is used. By default 10% of sample is used for holdout. Multi-pass learning requires cache file which is created by VW during the first pass.
+</div>
+
+## Train
+
+- RCV1 data set: 781k examples; up to 40k features per example; 1.1G uncompressed
+
+```{r, engine='bash', eval=FALSE, comment=''}
+vw \
+  # reproducible experiments
+  --random_seed 1234 \
+  # let's be specific about the cache file
+  -k --cache_file rcv1.train.cache \
+  # 10 passes should be enough
+  --passes 10 \
+  # save binary model`
+  -f rcv1-model.bin \
+  # save human readable model
+  --readable_model rcv1-model.txt \
+  # input file in vw format
+  rcv1/rcv1.train.vw.gz
+```
+
+<div class="notes">
+Example for holdout. Random seed is for reproducibility. Then tell VW to create cache file with specific name. Ten passes should be enough. The output is saved as binary model (-f) and readable model.
+</div>
+
+## Score / Test
+
+```{r, engine='bash', eval=FALSE, comment=''}
+vw \
+  # Ignore label information and just test
+  -t \
+  # binary model file
+  -i rcv1-model.bin \
+  # save predictions
+  -p rcv1-results.txt \
+  rcv1/rcv1.test.vw.gz
+```
+
+```{r, engine='bash', comment=''}
+head -n5 rcv1-results.txt
+```
+
+<div class="notes">
+Test example. We use saved model (-i) and test file. The result file has just one column and example order is preserved.
+</div>
+
+## Trillions of features ... 
+
+VW can create additional features on the fly
+
+- quadratic (`-q`): across two namespaces
+- cubic (`--cubic`): across three namespaces
+- low rank quadratic features (`--lrq`, `--lrqdropout`): low-rank (N) approximations of quadratic interaction terms
+- polynomial (`--stage_poly`): Nth degree polynomials
+- n-skip-k-gram (`--ngram`, `--skips`)
+
+<div class="notes">
+VW can create several type of interactions between existing features on the fly. Features should be put into namespaces and quadratic or cubic term are computed across selected namespaces. Each option can be used multiple times. 
+
+In recommendation setting or where namespaces have large cardinality it's better to use low rank quadratic features. But nothing is for free -- sensitive to learning rate, regularisation, ...
+
+VW can create n-skip-k-gram features. Not only for text features ...
+</div>
+
+## Trillions of features ...
+
+```{r, engine='bash', comment=''}
+cat trillions.vw
+```
+
+<div class="notes">
+`a` and `b` are namespaces
+</div>
+
+## Trillions of features ...
+
+```{r, engine='bash', comment='', results='hide'}
+vw --invert_hash model.txt -qab trillions.vw
+```
+
+```{r, engine='bash', comment=''}
+cat model.txt | tail -n+12
+```
+
+<div class="notes">
+Example for simple quadratic features. Without `--invert_hash` you wouldn't be able to tell how feature is derived. Caret symbol separates namespace and feature name. The second column is hash value and the last column is model weight.
+</div>
+
+## Hashing trick
+
+- feature name is hashed into fixed N-bit coefficient (model weights) space
+- default is 18 bits (`-b`) => maximum 262 144 weights in model
+- 1T features model requires 4TB of memory
+- VW needs several MB
+
+<div class="notes">
+Simply put, this is an another way for dimensionality reduction. `Feature Hashing for Large Scale Multitask Learning` paper shows that collisions have negligible impact on model performance. Using this trick you can learn perosnalised models
+</div>
+
+## Hashing trick
+
+```{r, engine='bash', comment='', results='hide'}
+vw -b 2 --invert_hash 2b.txt trillions.vw
+```
+
+```{r, engine='bash', comment=''}
+cat 2b.txt | tail -n+12
+```
+
+- `Constant` is hashed into 0
+- `b^commute>1h`, `b^income` are hashed into 1
+- `a^hour`, `b^commute>30m`, `b^s=m` are hashed into 2
+
+<div class="notes">
+This is example of extreme hashing, where only 2bits or 4 features are allowed.
+</div>
+
+## Hashing trick
+
+How to avoid feature hashing?
+
+- use numerical index as name
+- avoid namespace
+- avoid cubic, quadratic, ... features
+- do not use `--hash all`
+- low `-b` creates collisions => set `-b` high enough to avoid collisions
+
+```{r, engine='bash', comment=''}
+cat numeric.vw
+```
+
+<div class="notes">
+If feature hashing is a problem then you should use numerical names for you features and pre-compute all the interaction term. But be careful about hash space size -- set `-b` high enough
+</div>
+
+## Too many features
+
+- include / exclude namespace (`--ignore`, `--keep`)
+- use existing model (`--feature_mask`)
+
+```{r, engine='bash', comment='', eval=FALSE}
+vw --l1 0.00001 -f mask.model data.vw
+vw --feature_mask mask.model -f final.model data.vw
+```
+
+- L1 (`--l1`) and L2 (`--l2`) regularisation
+$$ \underset{w}{\text{min }} \sum_i (\lambda_1 \|w\|_1 + \frac{\lambda_2}{2} \Vert w \Vert_2^2 + \ell(x_i,y_i,w)) $$
+- L1 via truncated gradient: small weights are truncated to 0 
+
+<div class="notes">
+VW can limit number of features which are used for learning by excluding some namespace. You can specify this option multiple times.
+
+Sparse models can be learned using L1 / L2 regularisation. 
+</div>
+
+## Model debuging & inspection
+
+- readable model (`--invert_hash, --readable_model`)
+- change progress update frequency (`--progress`)
+- audit mode (`--audit`)
+- vw-varinfo
+```{r, engine='bash', comment=''}
+vowpal_wabbit/utl/vw-varinfo rcv1-20k.vw.gz | head -n 5
+```
+- and other scripts under `vowpal_wabbit/utl/`
+
+<div class="notes">
+VW has several options to help you to figure out what's happening during learning. You can inspect final models. Audit mode is probably too verbose without helper varinfo script. Few more helpful scripts are bundled with VW under `utl` directory
+</div>
+
+## The missing bits
+
+- (Cost-sensitive) One Against All (`--oaa`, `--csoaa`)
+- Error Correcting Tournament (`--etc`)
+- Weighted All Pairs (`--wap`)
+- Contextual Bandit (`--cb`)
+- Structured Prediction (search to learn) `--searn*`
+- Active Learning (`--active*`)
+- Topic Modeling (LDA) (`--lda*`)
+- Matrix Factorization (`--rank`)
+- Neural Network Reduction (`--nn`)
+- Parallelisation
+
+<div class="notes">
+I would say that almost every bullet point has sufficient depth for standalone presentation. VW implements reduction framework where learning problems are reduced to binary classification. I tried `One against all`, parallelisation, and LDA which didn't work very well.
+</div>
+
+## Questions?
+
+## Links
+
+- Source: https://github.com/ondrejivanic/VowpalWabbitIntro
+- VW: https://github.com/JohnLangford/vowpal_wabbit
