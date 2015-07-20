@@ -16,3 +16,10 @@ git clone https://github.com/JohnLangford/vowpal_wabbit.git
 wget -c http://hunch.net/~vw/rcv1.tar.gz
 tar xf rcv1.tar.gz
 ```
+- RStudio, a powerful and productive user interface for R. It’s free and open source, and works great on Windows, Mac, and Linux.
+
+```
+https://www.rstudio.com/products/RStudio/#Desktop
+```
+
+and then open ```vowpal_wabbit.Rmd```
